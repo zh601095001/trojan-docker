@@ -1,6 +1,7 @@
 import base64
 import json
 import os
+import time
 
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
@@ -14,39 +15,48 @@ matching_env_vars = {key[len(prefix):].lower().replace("__", "."): json.loads(va
 # 修改为你的 acme.json 文件路径
 ACME_JSON_FILE = os.environ.get("ACME_JSON_FILE")
 # 修改为证书和密钥的输出路径
-CERT_FILE = '/certificates/cert.pem'
-KEY_FILE = '/certificates/privkey.pem'
+CERT_FILE = '/certificates/certificate.crt'
+KEY_FILE = '/certificates/private.key'
 # 修改为你的域名
 DOMAIN = os.environ.get("DOMAIN")
+AUTO_CREATE_CERT = os.environ.get("AUTO_CREATE_CERT") or False
 
 
 def create_cert():
-    with open(ACME_JSON_FILE, 'r') as f:
-        data = json.load(f)
+    flags = True
+    while flags:
+        try:
+            with open(ACME_JSON_FILE, 'r') as f:
+                data = json.load(f)
 
-    certs = data['le']['Certificates']
-    for cert in certs:
-        cert_domain = cert['domain']['main']
-        if cert_domain == DOMAIN:
-            # Base64 解码证书和私钥
-            decoded_cert = base64.b64decode(cert['certificate'])
-            decoded_key = base64.b64decode(cert['key'])
+            certs = data['le']['Certificates']
+            for cert in certs:
+                cert_domain = cert['domain']['main']
+                sans_domain = cert['domain']['sans']
+                sans_domain.extend(cert_domain)
+                domians = sans_domain
+                if DOMAIN in domians:
+                    # Base64 解码证书和私钥
+                    decoded_cert = base64.b64decode(cert['certificate'])
+                    decoded_key = base64.b64decode(cert['key'])
 
-            # 提取和保存证书
-            with open(CERT_FILE, 'wb') as f:
-                f.write(x509.load_pem_x509_certificate(decoded_cert, default_backend()).public_bytes(serialization.Encoding.PEM))
-            # 提取和保存密钥
-            with open(KEY_FILE, 'wb') as f:
-                f.write(serialization.load_pem_private_key(decoded_key, password=None, backend=default_backend()).private_bytes(
-                    encoding=serialization.Encoding.PEM,
-                    format=serialization.PrivateFormat.TraditionalOpenSSL,
-                    encryption_algorithm=serialization.NoEncryption()
-                ))
-            print(f"证书和密钥已保存至 {CERT_FILE} 和 {KEY_FILE}")
-            return
-
-    print("未找到域名的证书。请检查域名是否正确或证书是否存在。")
-    return
+                    # 提取和保存证书
+                    with open(CERT_FILE, 'wb') as f:
+                        f.write(x509.load_pem_x509_certificate(decoded_cert, default_backend()).public_bytes(serialization.Encoding.PEM))
+                    # 提取和保存密钥
+                    with open(KEY_FILE, 'wb') as f:
+                        f.write(serialization.load_pem_private_key(decoded_key, password=None, backend=default_backend()).private_bytes(
+                            encoding=serialization.Encoding.PEM,
+                            format=serialization.PrivateFormat.TraditionalOpenSSL,
+                            encryption_algorithm=serialization.NoEncryption()
+                        ))
+                    print(f"证书和密钥已保存至 {CERT_FILE} 和 {KEY_FILE}")
+                    flags = False
+                    break
+        except Exception as e:
+            print(e)
+            time.sleep(1)
+            print("未找到域名的证书。请检查域名是否正确或证书是否存在。")
 
 
 raw_config = json.load(open("/config/config.json"))
@@ -69,4 +79,5 @@ for path, value in matching_env_vars.items():
 with open("/config/config.json", "w+") as fp:
     json.dump(raw_config, fp)
 
-create_cert()
+if AUTO_CREATE_CERT:
+    create_cert()

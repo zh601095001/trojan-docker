@@ -50,4 +50,4 @@ RUN chmod +x /wrapper.sh
 EXPOSE 443
 
 # 使用 CMD 启动 cron 服务，并保持前台运行
-CMD ["/wrapper.sh"]
+CMD ["/bin/sh","-c","/wrapper.sh"]
